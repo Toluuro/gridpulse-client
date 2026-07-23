@@ -1,17 +1,133 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
+
+// 🚀 UNIVERSAL AUTH SCANNER: Dynamically finds active GridPulse sessions across any storage key!
+const scanForAuthSession = () => {
+  if (typeof window === 'undefined') return { isAuthenticated: false, user: null };
+
+  let foundUser = null;
+  let isAuthenticated = false;
+
+  // 1. Scan localStorage and sessionStorage
+  const storages = [localStorage, sessionStorage];
+  for (const storage of storages) {
+    for (let i = 0; i < storage.length; i++) {
+      const key = storage.key(i) || '';
+      const lowerKey = key.toLowerCase();
+      const val = storage.getItem(key) || '';
+
+      // Look for any key representing an auth token or session
+      if (
+        lowerKey.includes('token') || 
+        lowerKey.includes('jwt') || 
+        lowerKey.includes('auth') || 
+        lowerKey.includes('session') ||
+        lowerKey.includes('gridpulse_access')
+      ) {
+        if (val && val !== 'null' && val !== 'false' && val !== 'undefined' && val !== '""') {
+          isAuthenticated = true;
+        }
+      }
+
+      // Look for any key containing user profile data (e.g., "gridpulse_user", "user", "profile")
+      if (
+        lowerKey.includes('user') || 
+        lowerKey.includes('profile') || 
+        lowerKey.includes('account') || 
+        lowerKey.includes('gridpulse')
+      ) {
+        if (val && val !== 'null' && val !== 'false' && val !== 'undefined') {
+          try {
+            const parsed = JSON.parse(val);
+            // Confirm it is a valid user object containing identity fields
+            if (parsed && (parsed.name || parsed.email || parsed._id || parsed.id || parsed.role || parsed.firstName)) {
+              foundUser = parsed;
+              isAuthenticated = true;
+            }
+          } catch (e) {
+            // If it is a raw string token stored under a user/auth key, mark as authenticated
+            if (val.length > 5 && !val.startsWith('{')) {
+              isAuthenticated = true;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // 2. Check document cookies if web storage scan didn't find a token
+  if (!isAuthenticated) {
+    const cookies = document.cookie.toLowerCase();
+    if (['token', 'auth', 'jwt', 'session', 'user', 'gridpulse'].some((k) => cookies.includes(k))) {
+      isAuthenticated = true;
+    }
+  }
+
+  return { isAuthenticated, user: foundUser };
+};
 
 export default function Navbar(): React.JSX.Element {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [authState, setAuthState] = useState<{ isAuthenticated: boolean; user: any }>({
+    isAuthenticated: false,
+    user: null,
+  });
+  
   const pathname = usePathname();
+  const router = useRouter();
 
   const isActive = (path: string) => pathname === path;
 
+  // 🚀 RE-SCAN ON ROUTE CHANGE OR FOCUS: Ensures the navbar updates immediately upon sign-in
+  useEffect(() => {
+    const updateAuth = () => {
+      const session = scanForAuthSession();
+      setAuthState(session);
+    };
+
+    updateAuth();
+
+    // Listen for storage changes across tabs or background token refreshes
+    window.addEventListener('storage', updateAuth);
+    window.addEventListener('focus', updateAuth);
+
+    return () => {
+      window.removeEventListener('storage', updateAuth);
+      window.removeEventListener('focus', updateAuth);
+    };
+  }, [pathname]);
+
+  // 🚀 UNIVERSAL SIGN-OUT ENGINE: Scrubs all browser credentials and routes to login
+  const handleSignOut = () => {
+    if (typeof window !== 'undefined') {
+      // Clear all local and session storage
+      localStorage.clear();
+      sessionStorage.clear();
+      
+      // Scrub standard auth cookies
+      const cookieNames = ['token', 'auth_token', 'jwt', 'session', 'user', 'gridpulse_token', 'gridpulse_user'];
+      cookieNames.forEach((name) => {
+        document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
+      });
+    }
+    
+    setAuthState({ isAuthenticated: false, user: null });
+    setIsMobileMenuOpen(false);
+    
+    // Redirect executive straight back to the login portal
+    router.push('/login');
+  };
+
+  const { isAuthenticated, user } = authState;
+
+  // Resolve best display name for the badge
+  const displayName = user?.name || user?.firstName || user?.email || 'Executive Analyst';
+
   return (
-    <header className="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-200 shadow-sm">
+    <header className="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-200 shadow-xs">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           
@@ -30,7 +146,7 @@ export default function Navbar(): React.JSX.Element {
             </span>
           </div>
 
-          {/* 2. DESKTOP NAVIGATION LINKS (Hidden on Mobile screens) */}
+          {/* 2. DESKTOP NAVIGATION LINKS */}
           <nav className="hidden md:flex items-center gap-8">
             <Link 
               href="/" 
@@ -46,33 +162,61 @@ export default function Navbar(): React.JSX.Element {
             </Link>
           </nav>
 
-          {/* 3. DESKTOP AUTH ACTION BUTTONS */}
+          {/* 3. DESKTOP AUTH ACTION BUTTONS (Dynamic Render) */}
           <div className="hidden md:flex items-center gap-4">
-            <Link 
-              href="/login" 
-              className="text-sm font-bold text-slate-600 hover:text-slate-900 transition px-3 py-2"
-            >
-              Sign In
-            </Link>
-            <Link 
-              href="/register" 
-              className="bg-slate-900 hover:bg-blue-600 text-white px-5 py-2.5 rounded-xl font-extrabold text-sm shadow-md transition"
-            >
-              Register →
-            </Link>
+            {isAuthenticated ? (
+              <div className="flex items-center gap-3 animate-in fade-in duration-200">
+                {/* Executive Status Badge */}
+                <span className="text-xs font-extrabold text-slate-700 bg-slate-100 px-3.5 py-1.5 rounded-xl border border-slate-200 truncate max-w-50 shadow-2xs">
+                  👤 {displayName}
+                </span>
+                {/* Sign Out Action */}
+                <button
+                  type="button"
+                  onClick={handleSignOut}
+                  className="bg-red-50 hover:bg-red-500 text-red-600 hover:text-white px-4 py-2 rounded-xl font-extrabold text-xs shadow-xs border border-red-200 transition duration-150 cursor-pointer"
+                >
+                  Sign Out →
+                </button>
+              </div>
+            ) : (
+              <>
+                <Link 
+                  href="/login" 
+                  className="text-sm font-bold text-slate-600 hover:text-slate-900 transition px-3 py-2"
+                >
+                  Sign In
+                </Link>
+                <Link 
+                  href="/register" 
+                  className="bg-slate-900 hover:bg-blue-600 text-white px-5 py-2.5 rounded-xl font-extrabold text-sm shadow-md transition"
+                >
+                  Register →
+                </Link>
+              </>
+            )}
           </div>
 
-          {/* 4. MOBILE VIEWPORT ACTIONS (Visible ONLY on Mobile) */}
+          {/* 4. MOBILE VIEWPORT ACTIONS */}
           <div className="flex items-center gap-2 md:hidden">
-            {/* Quick Register Button for High Mobile Conversion */}
-            <Link 
-              href="/register" 
-              className="bg-slate-900 text-white px-3.5 py-2 rounded-lg font-bold text-xs shadow-sm"
-            >
-              Register
-            </Link>
+            {isAuthenticated ? (
+              <button 
+                type="button"
+                onClick={handleSignOut}
+                className="bg-red-50 text-red-600 border border-red-200 px-3 py-1.5 rounded-lg font-bold text-xs shadow-xs"
+              >
+                Sign Out
+              </button>
+            ) : (
+              <Link 
+                href="/register" 
+                className="bg-slate-900 text-white px-3.5 py-2 rounded-lg font-bold text-xs shadow-xs"
+              >
+                Register
+              </Link>
+            )}
 
-            {/* Hamburger Menu Toggle Button */}
+            {/* Hamburger Menu Toggle */}
             <button
               type="button"
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
@@ -94,7 +238,7 @@ export default function Navbar(): React.JSX.Element {
         </div>
       </div>
 
-      {/* 5. MOBILE DROPDOWN COCOON (Toggles when Hamburger is clicked) */}
+      {/* 5. MOBILE DROPDOWN COCOON */}
       {isMobileMenuOpen && (
         <div className="md:hidden border-t border-slate-200 bg-white px-4 pt-3 pb-6 space-y-3 shadow-xl animate-in slide-in-from-top-2 duration-200">
           <div className="flex items-center justify-between pb-2 border-b border-slate-100">
@@ -118,13 +262,23 @@ export default function Navbar(): React.JSX.Element {
             About Us
           </Link>
           <div className="pt-2 border-t border-slate-100 flex flex-col gap-2">
-            <Link 
-              href="/login" 
-              onClick={() => setIsMobileMenuOpen(false)}
-              className="w-full text-center py-2.5 rounded-xl text-sm font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 transition"
-            >
-              Sign In to Syndicate Room
-            </Link>
+            {isAuthenticated ? (
+              <button 
+                type="button"
+                onClick={handleSignOut}
+                className="w-full text-center py-2.5 rounded-xl text-sm font-bold text-red-600 bg-red-50 hover:bg-red-100 border border-red-100 transition"
+              >
+                Sign Out of Syndicate Room ({displayName})
+              </button>
+            ) : (
+              <Link 
+                href="/login" 
+                onClick={() => setIsMobileMenuOpen(false)}
+                className="w-full text-center py-2.5 rounded-xl text-sm font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 transition"
+              >
+                Sign In to Syndicate Room
+              </Link>
+            )}
           </div>
         </div>
       )}
