@@ -16,7 +16,7 @@ interface AuthContextType {
   login: (token: string, user: UserProfile) => void;
   logout: () => void;
   isAuthenticated: boolean;
-  isLoading: boolean; // 🆕 Added hydration state
+  isLoading: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -24,7 +24,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }): React.JSX.Element {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [token, setToken] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true); // 🆕 Defaults to true until storage is checked
+  const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
 
   useEffect(() => {
@@ -34,7 +34,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
       setToken(savedToken);
       setUser(JSON.parse(savedUser));
     }
-    setIsLoading(false); // 🆕 Mark hydration complete
+    setIsLoading(false);
   }, []);
 
   const login = (newToken: string, newUser: UserProfile) => {
@@ -46,11 +46,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
   };
 
   const logout = () => {
+    // 1. Remove credentials from persistent browser storage
     localStorage.removeItem('gridpulse_token');
     localStorage.removeItem('gridpulse_user');
-    setToken(null);
-    setUser(null);
-    router.push('/login');
+    
+    // 2. Use a native hard browser redirect instead of router.push().
+    // This immediately suspends the current React tree, preventing the Briefing Suite 
+    // from flashing its "logged-out" state while the network fetches the login page!
+    window.location.href = '/login';
   };
 
   return (

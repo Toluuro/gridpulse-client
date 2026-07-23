@@ -19,50 +19,32 @@ export default function LandingPage(): React.JSX.Element {
 
   useEffect(() => {
     if (!isAuthenticated || !user) return;
-    
-    // 1. Fetch historical unread count from MongoDB on login
-    const checkUnread = async () => {
-      try {
-        const res = await fetch(`${process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3001'}/api/messages/unread/${encodeURIComponent(user.email)}`);
-        const data = await res.json();
-        if (data.totalUnread > 0) {
-          setUnreadCounts({ total: data.totalUnread, room: data.roomUnread, dm: data.dmUnread });
-        } else {
-          setUnreadCounts(null);
-        }
-      } catch (err) {
-        console.error('Failed to check unread messages:', err);
-      }
-    };
-    
-    checkUnread();
 
-    // 2. 🆕 Real-Time WebSocket Listener: Dynamically pop up banner if message arrives while sitting on page!
+    // 1. Instantly ask the open WebSocket for the unread count
+    socket.emit('REQUEST_UNREAD_COUNT', { email: user.email, assignedRoom: user.assignedRoom });
+
+    // 2. Listen for the result and update the banner
+    const handleUnreadResult = (data: { total: number; room: number; dm: number }) => {
+      if (data.total > 0) setUnreadCounts(data);
+      else setUnreadCounts(null);
+    };
+
+    // 3. If a message arrives while sitting on this page, just ask the socket for a fresh count!
     const handleNewMessage = (newMsg: any) => {
       const isMyRoomBroadcast = newMsg.recipientEmail === null && newMsg.roomId === user.assignedRoom;
-      const isMyDM = newMsg.recipientEmail?.toLowerCase() === user.email.toLowerCase();
-      const isFromSomeoneElse = newMsg.senderEmail?.toLowerCase() !== user.email.toLowerCase();
+      const isMyDM = newMsg.recipientEmail === user.email;
+      const isFromSomeoneElse = newMsg.senderEmail !== user.email;
 
       if (isFromSomeoneElse && (isMyRoomBroadcast || isMyDM)) {
-        setUnreadCounts(prev => {
-          if (prev) {
-            return {
-              total: prev.total + 1,
-              room: isMyRoomBroadcast ? prev.room + 1 : prev.room,
-              dm: isMyDM ? prev.dm + 1 : prev.dm
-            };
-          }
-          return {
-            total: 1,
-            room: isMyRoomBroadcast ? 1 : 0,
-            dm: isMyDM ? 1 : 0
-          };
-        });
+        socket.emit('REQUEST_UNREAD_COUNT', { email: user.email, assignedRoom: user.assignedRoom });
       }
     };
 
+    socket.on('UNREAD_COUNT_RESULT', handleUnreadResult);
     socket.on('NEW_MESSAGE', handleNewMessage);
+
     return () => {
+      socket.off('UNREAD_COUNT_RESULT', handleUnreadResult);
       socket.off('NEW_MESSAGE', handleNewMessage);
     };
   }, [isAuthenticated, user]);
