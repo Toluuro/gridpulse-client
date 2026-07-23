@@ -74,7 +74,7 @@ export default function LandingPage(): React.JSX.Element {
     <div className="flex flex-col min-h-screen bg-slate-50 font-sans">
       <Navbar />
       
-      <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-8">
+      <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 overflow-x-hidden">
         
         {/* EXECUTIVE UNREAD MESSAGE LOGIN ALERT BANNER */}
         {unreadCounts && unreadCounts.total > 0 && (
