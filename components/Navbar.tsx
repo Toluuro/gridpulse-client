@@ -2,16 +2,14 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 
-// 🚀 UNIVERSAL AUTH SCANNER: Dynamically finds active GridPulse sessions across any storage key!
 const scanForAuthSession = () => {
   if (typeof window === 'undefined') return { isAuthenticated: false, user: null };
 
   let foundUser = null;
   let isAuthenticated = false;
 
-  // 1. Scan localStorage and sessionStorage
   const storages = [localStorage, sessionStorage];
   for (const storage of storages) {
     for (let i = 0; i < storage.length; i++) {
@@ -19,7 +17,6 @@ const scanForAuthSession = () => {
       const lowerKey = key.toLowerCase();
       const val = storage.getItem(key) || '';
 
-      // Look for any key representing an auth token or session
       if (
         lowerKey.includes('token') || 
         lowerKey.includes('jwt') || 
@@ -32,7 +29,6 @@ const scanForAuthSession = () => {
         }
       }
 
-      // Look for any key containing user profile data (e.g., "gridpulse_user", "user", "profile")
       if (
         lowerKey.includes('user') || 
         lowerKey.includes('profile') || 
@@ -42,13 +38,11 @@ const scanForAuthSession = () => {
         if (val && val !== 'null' && val !== 'false' && val !== 'undefined') {
           try {
             const parsed = JSON.parse(val);
-            // Confirm it is a valid user object containing identity fields
             if (parsed && (parsed.name || parsed.email || parsed._id || parsed.id || parsed.role || parsed.firstName)) {
               foundUser = parsed;
               isAuthenticated = true;
             }
           } catch (e) {
-            // If it is a raw string token stored under a user/auth key, mark as authenticated
             if (val.length > 5 && !val.startsWith('{')) {
               isAuthenticated = true;
             }
@@ -58,7 +52,6 @@ const scanForAuthSession = () => {
     }
   }
 
-  // 2. Check document cookies if web storage scan didn't find a token
   if (!isAuthenticated) {
     const cookies = document.cookie.toLowerCase();
     if (['token', 'auth', 'jwt', 'session', 'user', 'gridpulse'].some((k) => cookies.includes(k))) {
@@ -77,11 +70,9 @@ export default function Navbar(): React.JSX.Element {
   });
   
   const pathname = usePathname();
-  const router = useRouter();
 
   const isActive = (path: string) => pathname === path;
 
-  // 🚀 RE-SCAN ON ROUTE CHANGE OR FOCUS: Ensures the navbar updates immediately upon sign-in
   useEffect(() => {
     const updateAuth = () => {
       const session = scanForAuthSession();
@@ -90,40 +81,40 @@ export default function Navbar(): React.JSX.Element {
 
     updateAuth();
 
-    // Listen for storage changes across tabs or background token refreshes
     window.addEventListener('storage', updateAuth);
     window.addEventListener('focus', updateAuth);
+    window.addEventListener('auth-change', updateAuth);
 
     return () => {
       window.removeEventListener('storage', updateAuth);
       window.removeEventListener('focus', updateAuth);
+      window.removeEventListener('auth-change', updateAuth);
     };
   }, [pathname]);
 
-  // 🚀 UNIVERSAL SIGN-OUT ENGINE: Scrubs all browser credentials and routes to login
+  // 🚀 THE HARD-RESET SIGN OUT ENGINE
   const handleSignOut = () => {
     if (typeof window !== 'undefined') {
-      // Clear all local and session storage
+      // 1. Scrub all storage vaults
       localStorage.clear();
       sessionStorage.clear();
       
-      // Scrub standard auth cookies
+      // 2. Scrub all authentication cookies
       const cookieNames = ['token', 'auth_token', 'jwt', 'session', 'user', 'gridpulse_token', 'gridpulse_user'];
       cookieNames.forEach((name) => {
         document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
       });
+
+      // 3. Broadcast logout event to any open client tabs
+      window.dispatchEvent(new Event('storage'));
+      window.dispatchEvent(new Event('auth-change'));
+
+      // 4. ENTERPRISE HARD RESET: Forces browser RAM and Next.js client cache to self-destruct!
+      window.location.href = '/login';
     }
-    
-    setAuthState({ isAuthenticated: false, user: null });
-    setIsMobileMenuOpen(false);
-    
-    // Redirect executive straight back to the login portal
-    router.push('/login');
   };
 
   const { isAuthenticated, user } = authState;
-
-  // Resolve best display name for the badge
   const displayName = user?.name || user?.firstName || user?.email || 'Executive Analyst';
 
   return (
@@ -131,7 +122,7 @@ export default function Navbar(): React.JSX.Element {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           
-          {/* 1. BRAND LOGO & PRO BADGE */}
+          {/* BRAND LOGO */}
           <div className="flex items-center gap-2">
             <Link href="/" className="flex items-center gap-2.5 group">
               <div className="w-9 h-9 bg-blue-600 text-white rounded-xl flex items-center justify-center font-black text-lg shadow-md group-hover:bg-blue-700 transition">
@@ -146,7 +137,7 @@ export default function Navbar(): React.JSX.Element {
             </span>
           </div>
 
-          {/* 2. DESKTOP NAVIGATION LINKS */}
+          {/* DESKTOP NAVIGATION */}
           <nav className="hidden md:flex items-center gap-8">
             <Link 
               href="/" 
@@ -162,15 +153,13 @@ export default function Navbar(): React.JSX.Element {
             </Link>
           </nav>
 
-          {/* 3. DESKTOP AUTH ACTION BUTTONS (Dynamic Render) */}
+          {/* DESKTOP AUTH ACTION BUTTONS */}
           <div className="hidden md:flex items-center gap-4">
             {isAuthenticated ? (
               <div className="flex items-center gap-3 animate-in fade-in duration-200">
-                {/* Executive Status Badge */}
                 <span className="text-xs font-extrabold text-slate-700 bg-slate-100 px-3.5 py-1.5 rounded-xl border border-slate-200 truncate max-w-50 shadow-2xs">
                   👤 {displayName}
                 </span>
-                {/* Sign Out Action */}
                 <button
                   type="button"
                   onClick={handleSignOut}
@@ -197,7 +186,7 @@ export default function Navbar(): React.JSX.Element {
             )}
           </div>
 
-          {/* 4. MOBILE VIEWPORT ACTIONS */}
+          {/* MOBILE VIEWPORT ACTIONS */}
           <div className="flex items-center gap-2 md:hidden">
             {isAuthenticated ? (
               <button 
@@ -216,7 +205,6 @@ export default function Navbar(): React.JSX.Element {
               </Link>
             )}
 
-            {/* Hamburger Menu Toggle */}
             <button
               type="button"
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
@@ -238,7 +226,7 @@ export default function Navbar(): React.JSX.Element {
         </div>
       </div>
 
-      {/* 5. MOBILE DROPDOWN COCOON */}
+      {/* MOBILE DROPDOWN COCOON */}
       {isMobileMenuOpen && (
         <div className="md:hidden border-t border-slate-200 bg-white px-4 pt-3 pb-6 space-y-3 shadow-xl animate-in slide-in-from-top-2 duration-200">
           <div className="flex items-center justify-between pb-2 border-b border-slate-100">
